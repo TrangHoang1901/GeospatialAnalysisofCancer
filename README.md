@@ -1,12 +1,13 @@
 # 🦠 Project Geospatial Anaylysis of Cancer 🦠
 
-## [Live Demo 🎥](https://drive.google.com/file/d/1ooAWBABH4AIo4H9gAo2G-1EiZZJw1oMP/view?usp=sharing)
-
 ## Table of Contents
 
-1. [Abstract](#Abstract)
-2. [Problem Definition](#Problem-Definition)
-3. [Methodological Approach & Implementation/Analysis](##Methodological-Approach-&-Implementation/Analysis)
+1. [Live Demo](#Live-Demo)
+2. [Abstract](#Abstract)
+3. [Problem Definition](#Problem-Definition)
+4. [Methodological Approach & Implementation/Analysis](##Methodological-Approach-&-Implementation/Analysis)
+
+## [Live Demo 🎥](https://drive.google.com/file/d/1ooAWBABH4AIo4H9gAo2G-1EiZZJw1oMP/view?usp=sharing)
 
 ## Abstract
 

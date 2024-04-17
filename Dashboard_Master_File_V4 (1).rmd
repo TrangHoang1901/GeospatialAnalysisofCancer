@@ -1,0 +1,1230 @@
+---
+title: "CPTS 475 Project Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+runtime: shiny
+---
+
+```{r setup, include=FALSE} 
+#SETUP LIBRARIES
+library(flexdashboard)
+library(usmap)
+library(ggplot2)
+library(gplots)
+library(dplyr)
+library(GGally)
+library(DT)
+library(lares)
+library(tidyr)
+library(collapsibleTree)
+library(terra)
+library(raster)
+library(leaflet)
+library(conflicted)
+
+
+conflicts_prefer(dplyr::filter)
+conflicts_prefer(dplyr::select)
+conflicts_prefer(DT::renderDataTable)
+conflicts_prefer(GGally::wrap)
+
+#important websites for learning
+#https://stackoverflow.com/questions/61488683/r-flex-dashboard-layout-with-tabs-and-panels
+
+#https://www.paulamoraga.com/book-geospatial/sec-flexdashboard.html
+
+#https://pkgs.rstudio.com/flexdashboard/articles/using.html
+```
+
+```{r read in all csv}
+#code to read in and process datasets
+livercancer_general <- read.csv("livercancer_inc_per100k_pop_2015_2019.csv")
+livercancer_race <- read.csv("livercancer_inc_per100k_pop_2015_2019_race.csv")
+livercancer_gender <- read.csv("livercancer_inc_per100k_pop_2015_2019_gender.csv")
+
+lungcancer_general <- read.csv("lungcancer_inc_per100k_pop_2015_2019.csv")
+#file_path1 = "/Users/helenhoang/Downloads/cancer_incidence/lung_cancer/lungcancer_inc_per100k_pop_2015_2019.csv"
+#lungcancer_general = read.csv(file_path1)
+
+lungcancer_race <- read.csv("lungcancer_inc_per100k_pop_2015_2019_race.csv")
+#file_path3 = "/Users/helenhoang/Downloads/cancer_incidence/lung_cancer/lungcancer_inc_per100k_pop_2015_2019_race.csv"
+#lungcancer_race = read.csv(file_path3)
+
+lungcancer_gender <- read.csv("lungcancer_inc_per100k_pop_2015_2019_gender.csv")
+#file_path2 = "/Users/helenhoang/Downloads/cancer_incidence/lung_cancer/lungcancer_inc_per100k_pop_2015_2019_gender.csv"
+#lungcancer_gender = read.csv(file_path2)
+
+airquality_factor <- read.csv("air_quality_pm2.5annualavg_bycounty_2018_2019.csv")
+arsenic_factor <- read.csv("arsenic_annual_mean_conc_2018_2019.csv")
+bingedrinking_factor <- read.csv("binge_drinking_alcohol_adults_per100k_pop_2018_2019.csv")
+heartdisease_factor <- read.csv("coronary_heart_disease_per100k_pop_2018_2019.csv")
+asthma_factor <- read.csv("county_asthma_per100k_pop_2018_2019.csv")
+healthinsurance_factor <- read.csv("county_noHealthIns_perc_pop_2018_2019.csv")
+diabetes_factor <- read.csv("diabetes_adults_per100k_pop_2018_2019.csv")
+obesity_factor <- read.csv("obesity_adults_per100k_pop_2018_2019.csv")
+poverty_factor <- read.csv("pop_perc_below_poverty_2018_2019.csv")
+smoking_factor <- read.csv("smoking_adults_per100k_pop_2018_2019.csv")
+
+```
+
+```{r livercancer_general preprocessing}
+#processing general liver cancer dataset
+
+#rename variable
+livercancer_general <- livercancer_general %>% rename("fips" = "CountyFIPS")
+
+#replace missing values with 0
+livercancer_general$Value[livercancer_general$Value == "Suppressed"] <- NA
+
+#convert Value to numeric
+livercancer_general$Value <- as.numeric(livercancer_general$Value) #chr to int variable
+
+#Turn NA values into mean of state value
+livercancer_general <- livercancer_general %>%
+  group_by(State) %>%
+  mutate(Value = ifelse(is.na(Value), mean(Value, na.rm = TRUE), Value))
+
+#round "value" to 2 decimals
+livercancer_general$Value <- round(livercancer_general$Value, 2)
+```
+
+
+```{r}
+#LIVER CANCER BY RACE
+
+#replace missing values with 0
+livercancer_race$Value[livercancer_race$Value == "Suppressed"] <- NA
+
+#convert Value to numeric
+livercancer_race$Value <- as.numeric(livercancer_race$Value) #chr to int variable
+
+livercancer_race <- livercancer_race %>% rename("fips" = "CountyFIPS")
+
+#Turn NA values into mean of state value
+livercancer_race <- livercancer_race %>%
+  group_by(State, Race.Ethnicity) %>%
+  mutate(Value = ifelse(is.na(Value), mean(Value, na.rm = TRUE), Value))
+
+#round "value" to 2 decimals
+livercancer_race$Value <- round(livercancer_race$Value, 2)
+
+livercancer_white <- livercancer_race %>% filter(Race.Ethnicity == "White (includes Hispanic)")
+livercancer_black <- livercancer_race %>% filter(Race.Ethnicity == "Black (includes Hispanic)")
+livercancer_asian <- livercancer_race %>% filter(Race.Ethnicity == "Asian/Pacific Islander (includes Hispanic)")
+livercancer_nativeamerican <- livercancer_race %>% filter(Race.Ethnicity == "American Indian/Alaskan Native (includes Hispanic)")
+
+#livercancer_race
+```
+
+
+```{r}
+#LIVER CANCER BY GENDER
+#replace missing values with 0
+livercancer_gender$Value[livercancer_gender$Value == "Suppressed"] <- NA
+
+#convert Value to numeric
+livercancer_gender$Value <- as.numeric(livercancer_gender$Value) #chr to int variable
+
+livercancer_gender <- livercancer_gender %>% rename("fips" = "CountyFIPS")
+
+#Turn NA values into mean of state value
+livercancer_gender <- livercancer_gender %>%
+  group_by(State, Gender) %>%
+  mutate(Value = ifelse(is.na(Value), mean(Value, na.rm = TRUE), Value))
+
+#round "value" to 2 decimals
+livercancer_gender$Value <- round(livercancer_gender$Value, 2)
+
+livercancer_male <- livercancer_gender %>% filter(Gender == "Male")
+livercancer_female <- livercancer_gender %>% filter(Gender == "Female")
+
+#livercancer_female
+```
+
+
+```{r}
+#LUNG CANCER SETUP
+lungcp <- lungcancer_general
+lungcp$Value <- as.numeric(ifelse(lungcp$Value == "Suppressed", NA, lungcp$Value))
+lungcp <- dplyr::select(lungcp, -Start.Year)
+lungcp <- dplyr::select(lungcp, -End.Year)
+lungcp <- dplyr::select(lungcp, -Data.Comment)
+lungcp <- dplyr::select(lungcp, -X)
+lungcp <- lungcp %>% rename("fips" = "CountyFIPS")
+
+
+lung_gendercp <- lungcancer_gender
+lung_gendercp$Value <- as.numeric(ifelse(lung_gendercp$Value == "Suppressed", NA, lung_gendercp$Value))
+lung_gendercp <- lung_gendercp %>%
+  group_by(State, Gender) %>%
+  mutate(Value = if_else(is.na(Value), round(mean(Value, na.rm = TRUE), 1), Value))
+lung_gendercp <- dplyr::select(lung_gendercp, -Start.Year)
+lung_gendercp <- dplyr::select(lung_gendercp, -End.Year)
+lung_gendercp <- dplyr::select(lung_gendercp, -Data.Comment)
+lung_gendercp <- lung_gendercp %>% rename("fips" = "CountyFIPS")
+
+lung_racecp <- lungcancer_race
+lung_racecp$Value <- as.numeric(ifelse(lung_racecp$Value == "Suppressed", NA, lung_racecp$Value))
+lung_racecp <- lung_racecp %>%
+  group_by(State, Race.Ethnicity) %>%
+  mutate(Value = if_else(is.na(Value), round(mean(Value, na.rm = TRUE), 1), Value))
+lung_racecp <- dplyr::select(lung_racecp, -Start.Year)
+lung_racecp <- dplyr::select(lung_racecp, -End.Year)
+lung_racecp <- dplyr::select(lung_racecp, -Data.Comment)
+lung_racecp <- lung_racecp %>% rename("fips" = "CountyFIPS")
+```
+
+
+```{r preprocess all factors}
+#Pre-Process all of the factors. I use the mean of 2018 and 2019 data and then select the important columns and rename, then remove dupe rows
+bingedrinking_values <- bingedrinking_factor %>% group_by(CountyFIPS) %>% do(mutate(., Cancer = mean(.$Value))) %>%
+  select("State", "CountyFIPS", "County", "Cancer") %>% rename("fips" = "CountyFIPS") %>%
+  rename("Binge_Drinking" = "Cancer") %>% unique()
+bingedrinking_values$Binge_Drinking <- round(bingedrinking_values$Binge_Drinking, 2)
+
+arsenic_values <- arsenic_factor %>% group_by(CountyFIPS) %>% do(mutate(., Cancer = mean(.$Value))) %>%
+  select("State", "CountyFIPS", "County", "Cancer") %>% rename("fips" = "CountyFIPS") %>%
+  rename("Arsenic" = "Cancer") %>% unique()
+arsenic_values$Arsenic <- round(arsenic_values$Arsenic, 2)
+
+healthinsurance_values <- healthinsurance_factor %>% group_by(CountyFIPS) %>% do(mutate(., Cancer = mean(.$Value))) %>%
+  select("State", "CountyFIPS", "County", "Cancer") %>% rename("fips" = "CountyFIPS") %>%
+  rename("Health_Insurance" = "Cancer") %>% unique()
+healthinsurance_values$Health_Insurance <- round(healthinsurance_values$Health_Insurance, 2)
+
+diabetes_values <- diabetes_factor %>% group_by(CountyFIPS) %>% do(mutate(., Cancer = mean(.$Value))) %>%
+  select("State", "CountyFIPS", "County", "Cancer") %>% rename("fips" = "CountyFIPS") %>%
+  rename("Diabetes" = "Cancer") %>% unique()
+diabetes_values$Diabetes <- round(diabetes_values$Diabetes, 2)
+
+heartdisease_values <- heartdisease_factor %>% group_by(CountyFIPS) %>% do(mutate(., Cancer = mean(.$Value))) %>%
+  select("State", "CountyFIPS", "County", "Cancer") %>% rename("fips" = "CountyFIPS") %>%
+  rename("Heart_Disease" = "Cancer") %>% unique()
+heartdisease_values$Heart_Disease <- round(heartdisease_values$Heart_Disease, 2)
+
+obesity_values <- obesity_factor %>% group_by(CountyFIPS) %>% do(mutate(., Cancer = mean(.$Value))) %>%
+  select("State", "CountyFIPS", "County", "Cancer") %>% rename("fips" = "CountyFIPS") %>%
+  rename("Obesity" = "Cancer") %>% unique()
+obesity_values$Obesity <- round(obesity_values$Obesity, 2)
+
+airquality_values <- airquality_factor %>% group_by(CountyFIPS) %>% do(mutate(., Cancer = mean(.$Value))) %>%
+  select("State", "CountyFIPS", "County", "Cancer") %>% rename("fips" = "CountyFIPS") %>%
+  rename("Air_Quality" = "Cancer") %>% unique()
+airquality_values$Air_Quality <- round(airquality_values$Air_Quality, 2)
+
+asthma_values <- asthma_factor %>% group_by(CountyFIPS) %>% do(mutate(., Cancer = mean(.$Value))) %>%
+  select("State", "CountyFIPS", "County", "Cancer") %>% rename("fips" = "CountyFIPS") %>%
+  rename("Asthma" = "Cancer") %>% unique()
+asthma_values$Asthma <- round(asthma_values$Asthma, 2)
+
+#replace missing values with NA
+poverty_factor$Value[poverty_factor$Value == "Suppressed"] <- NA
+
+#convert Value to numeric
+poverty_factor$Value <- as.numeric(poverty_factor$Value) #chr to int variable
+
+poverty_values <- poverty_factor %>% group_by(CountyFIPS) %>% do(mutate(., Cancer = mean(.$Value))) %>%
+  select("State", "CountyFIPS", "County", "Cancer") %>% rename("fips" = "CountyFIPS") %>%
+  rename("Poverty" = "Cancer") %>% unique()
+poverty_values$Poverty <- round(poverty_values$Poverty, 2)
+
+smoking_values <- smoking_factor %>% group_by(CountyFIPS) %>% do(mutate(., Cancer = mean(.$Value))) %>%
+  select("State", "CountyFIPS", "County", "Cancer") %>% rename("fips" = "CountyFIPS") %>%
+  rename("Smoking" = "Cancer") %>% unique()
+smoking_values$Smoking <- round(smoking_values$Smoking, 2)
+```
+
+
+```{r create all_factor data tables}
+#merging datasets
+
+all_factors <- livercancer_general %>%
+  inner_join(bingedrinking_values, by = c("County", "fips", "State")) %>%
+  inner_join(healthinsurance_values, by = c("County", "fips", "State"))%>%
+  inner_join(diabetes_values, by = c("County", "fips", "State"))%>%
+  inner_join(heartdisease_values, by = c("County", "fips", "State"))%>% 
+  inner_join(obesity_values, by = c("County", "fips", "State"))%>% 
+  left_join(airquality_values, by = c("County", "fips", "State"))%>% #uses left_join due to missing data
+  inner_join(asthma_values, by = c("County", "fips", "State"))%>% 
+  inner_join(poverty_values, by = c("County", "fips", "State"))%>% 
+  inner_join(smoking_values, by = c("County", "fips", "State"))%>%
+  left_join(arsenic_values, by = c("County", "fips", "State"))%>%
+  rename("Liver_Cancer" = "Value") %>%
+  select(-c("Data.Comment", "X", "Start.Year", "End.Year"))
+
+all_factors_lung <- lungcp %>%
+  left_join(bingedrinking_values, by = c("County", "fips", "State")) %>%
+  left_join(healthinsurance_values, by = c("County", "fips", "State"))%>%
+  left_join(diabetes_values, by = c("County", "fips", "State"))%>%
+  left_join(heartdisease_values, by = c("County", "fips", "State"))%>% 
+  left_join(obesity_values, by = c("County", "fips", "State"))%>% 
+  left_join(airquality_values, by = c("County", "fips", "State"))%>% #uses left_join due to missing data
+  left_join(asthma_values, by = c("County", "fips", "State"))%>% 
+  left_join(poverty_values, by = c("County", "fips", "State"))%>% 
+  left_join(smoking_values, by = c("County", "fips", "State"))%>%
+  left_join(arsenic_values, by = c("County", "fips", "State"))%>%
+  rename("Lung_Cancer" = "Value") 
+```
+
+Liver Cancer
+===
+
+Column {data-width=600} {.tabset}
+-----------------------------------------------------------------------
+
+### Liver Cancer by US County Map
+
+```{r}
+plot_usmap(regions = "county", data = livercancer_general, values = "Value") + scale_fill_continuous(type = "viridis")
+```
+
+### Filter by State
+
+#### Filter 
+```{r}
+options <- unique(livercancer_general$State)
+selectInput("state_liver", label = "Choose custom state:",
+            choices = options, selected = "Alabama")
+```
+
+#### Map
+```{r}
+#plot_usmap(regions = "county", data=lungcp, values = "Value")
+renderPlot({
+  plot_usmap(regions = "county", 
+             data=livercancer_general, values = "Value", 
+             include = input$state_liver, 
+             labels = TRUE) + scale_fill_continuous(low = "white", high = "red", name = "Rate of Cancer", label = scales::comma) + labs(title = input$state_liver, subtitle = "This is a rate of liver cancer of the counties") + theme(panel.background=element_blank())
+},
+height = 500, 
+width = 600,
+)
+```
+
+### Filter by County
+```{r}
+#Source: Lung_Cancer", "Air_Quality", "Arsenic", "Binge_Drinking", "Heart_Disease", "Asthma", "Health_Insurance", "Diabetes", "Obesity", "Poverty", "Smoking"
+# Get USA polygon data
+USA_liver <- getData("GADM", country = "usa", level = 2)
+# Prepare data
+mydata_liver <- all_factors %>% dplyr::select(State, County, Liver_Cancer, 
+                                      Air_Quality, Arsenic, Binge_Drinking, Heart_Disease, Asthma, 
+                                      Health_Insurance, Diabetes, Obesity, Poverty, Smoking)
+
+temp_liver <- merge(USA_liver, mydata_liver,
+              by.x = c("NAME_1", "NAME_2"), by.y = c("State", "County"),
+              all.x = TRUE)
+
+# Create a color palette
+mypal_liver <- colorNumeric(palette = "viridis", domain = temp_liver$Liver_Cancer, na.color = "grey")
+
+leaflet() %>% 
+addProviderTiles("OpenStreetMap.Mapnik") %>%
+setView(lat = 39.8283, lng = -98.5795, zoom = 4) %>%
+  addPolygons(data = temp_liver, stroke = FALSE, smoothFactor = 0.2, 
+              fillOpacity = 0.7,
+              fillColor = ~mypal_liver(Liver_Cancer),
+              color = "white",
+              popup = paste("State: ", temp_liver$NAME_1, "<br>",
+                            "County: ", temp_liver$NAME_2, "<br>",
+                            "Rate of Liver Cancer: ", temp_liver$Liver_Cancer, "<br>",
+                            "Air_Quality: ", temp_liver$Air_Quality, "<br>",
+                            "Arsenic: ", temp_liver$Arsenic, "<br>",
+                            "Binge_Drinking: ", temp_liver$Binge_Drinking, "<br>",
+                            "Heart_Disease: ", temp_liver$Heart_Disease, "<br>",
+                            "Asthma: ", temp_liver$Asthma, "<br>",
+                            "Health_Insurance: ", temp_liver$Health_Insurance, "<br>",
+                            "Diabetes: ", temp_liver$Diabetes, "<br>",
+                            "Obesity: ", temp_liver$Obesity, "<br>",
+                            "Poverty: ", temp_liver$Poverty, "<br>",
+                            "Smoking: ", temp_liver$Smoking, "<br>"),
+              highlight = highlightOptions(color = "black", bringToFront = TRUE)) %>%
+  addLegend(position = "bottomleft", pal = mypal_liver, values = temp_liver$Liver_Cancer,
+            title = "Rate of Cancer",
+            opacity = 0.7)
+
+```
+
+Column {data-width=400} {.tabset}
+-----------------------------------------------------------------------
+
+### Data Table + Correlations
+
+#### Data By County
+<style>
+.dataTables_scrollBody {
+    height:300px !important;
+    max-height:300px !important;
+}
+.chart-stage-flex {
+    overflow:auto !important;
+}
+</style>
+```{r}
+#create a searchable and interactive datatable
+datatable(all_factors,
+          rownames = FALSE, options = list(pageLength = 10))
+```
+
+#### Major Correlations
+
+
+
+```{r, fig.height=6}
+#all_factors.fit <- lm(Liver_Cancer ~ . - StateFIPS - State - fips - County, data = all_factors)
+
+#summary(all_factors.fit)
+trimmed_all_factors <- subset(all_factors, select = -c(State, County, fips, StateFIPS))
+corr_var(trimmed_all_factors, Liver_Cancer, max_pvalue = 0.01, top = 10)
+```
+
+
+### Rankings
+
+#### Top 5 States with Highest Avg Liver Cancer Rates
+
+```{r}
+all_factors %>% group_by(State) %>% summarise(Mean_Cancer = mean(Liver_Cancer, na.rm = TRUE)) %>% arrange(desc(Mean_Cancer)) %>% head(5)
+```
+
+#### Bottom 5 States with Lowest Avg Liver Cancer Rates
+
+```{r}
+all_factors %>% group_by(State) %>% summarise(Mean_Cancer = mean(Liver_Cancer, na.rm = TRUE)) %>% arrange(Mean_Cancer) %>% head(5)
+```
+
+#### Top 5 Counties with Highest Avg Liver Cancer Rates
+```{r}
+all_factors %>% group_by(County, State) %>% summarise(Mean_Cancer = mean(Liver_Cancer, na.rm = TRUE)) %>% arrange(desc(Mean_Cancer)) %>% head(5)
+```
+
+#### Bottom 5 Counties with Lowest Avg Liver Cancer Rates
+```{r}
+all_factors %>% group_by(County, State) %>% summarise(Mean_Cancer = mean(Liver_Cancer, na.rm = TRUE)) %>% arrange(Mean_Cancer) %>% head(5)
+```
+
+
+### Regression And Factors
+
+#### Regression for Significant Features
+```{r}
+all_major_factors_liver_cancer.fit <- lm(Liver_Cancer ~ Health_Insurance + Air_Quality +
+                                           Diabetes * Binge_Drinking + Diabetes * Obesity
+                                           , data = all_factors)
+summary(all_major_factors_liver_cancer.fit)
+```
+#### Regression for Accuracy
+```{r}
+all_major_factors_liver_cancer.fit2 <- lm(Liver_Cancer ~ Health_Insurance + Air_Quality + 
+                                           Arsenic +
+                                           Diabetes * Binge_Drinking + Diabetes * Obesity +
+                                           Diabetes * Heart_Disease + Diabetes * Poverty +
+                                           Diabetes * Smoking +
+                                           Binge_Drinking * Heart_Disease +
+                                           Obesity * Smoking + Asthma * Smoking
+                                           , data = all_factors)
+
+summary(all_major_factors_liver_cancer.fit2)
+par(mfrow=c(2,2))
+plot(all_major_factors_liver_cancer.fit2)
+par(mfrow=c(1,1))
+```
+
+
+### Correlation by Category
+```{r}
+liver_cl <- all_factors[, c("Liver_Cancer", "Air_Quality", "Arsenic", "Binge_Drinking", "Heart_Disease", "Asthma", "Health_Insurance", "Diabetes", "Obesity", "Poverty", "Smoking")]
+
+liver_cl <- apply(liver_cl, 2, function(x) ifelse(is.na(x), mean(x, na.rm = TRUE), x))
+
+# Compute the correlation matrix
+corr_liver <- cor(liver_cl)
+
+corr_deposite_liver <- data.frame(variable = rownames(corr_liver), corr = corr_liver[, 'Liver_Cancer']) %>%
+  filter(variable != 'Liver_Cancer') %>%
+  arrange(desc(corr))
+
+corr_deposite_liver$corr <- abs(corr_deposite_liver$corr)
+
+liver_lifestyle <- mean(corr_deposite_liver$corr[corr_deposite_liver$variable == "Asthma" | corr_deposite_liver$variable == "Binge_Drinking" | 
+                                                   corr_deposite_liver$variable == "Diabetes" | corr_deposite_liver$variable == "Heart_Disease" |
+                                                   corr_deposite_liver$variable == "Obesity" | corr_deposite_liver$variable == "Smoking"])
+
+liver_socioeconomic <- mean(corr_deposite_liver$corr[corr_deposite_liver$variable == "Health_Insurance" | corr_deposite_liver$variable == "Poverty"])
+
+liver_environmental <- mean(corr_deposite_liver$corr[corr_deposite_liver$variable == "Air_Quality" | corr_deposite_liver$variable == "Arsenic"])
+
+liver_categories <- data.frame(Category = c("Lifestyle", "Socioeconomic", "Environmental"),
+                               Avg_Correlation = c(liver_lifestyle, liver_socioeconomic, liver_environmental))
+
+ggplot(liver_categories, aes(x = Category, y = Avg_Correlation, fill = Category)) +
+  geom_bar(stat = "summary", fun = "mean", position = "dodge") +
+  labs(title = "Which Factor Category has Highest Correlation with Liver Cancer?", x = "Factor Category", y = "Average Correlation") +
+  theme_minimal()
+```
+
+
+
+
+
+
+
+
+Liver Cancer: Race
+===
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### Filter by Race {data-height=200}
+   
+```{r}
+selectInput("race_liver", label = "Choose custom race:",
+            choices = c("All", "Asian/Pacific Islander (includes Hispanic)", "Black (includes Hispanic)", "American Indian/Alaskan Native (includes Hispanic)", "White (includes Hispanic)"), selected = "All")
+```
+
+### US Map {data-height=500}
+   
+```{r}
+renderPlot({
+  if (input$race_liver == "All") {
+    subset_map_race_liver <- livercancer_race
+  } else {
+    # Subset data for the specific race/ethnicity
+    subset_map_race_liver <- livercancer_race[livercancer_race$Race.Ethnicity == input$race_liver, ]
+  }
+  plot_usmap(regions = "county", data=subset_map_race_liver, values = "Value") + scale_fill_continuous(type = "viridis")
+})
+```
+
+Column {data-width=500} {.tabset}
+-----------------------------------------------------------------------
+
+### Data By County
+
+```{r}
+renderDT({
+  if (input$race_liver == "All") {
+    subset_table_race_liver <- livercancer_race
+  } else {
+    # Subset data for the specific race/ethnicity
+    subset_table_race_liver <- livercancer_race[livercancer_race$Race.Ethnicity == input$race_liver, ]
+  }
+  DT::datatable(subset_table_race_liver[, c("State", "County", "Value", "Race.Ethnicity")], 
+                  rownames = FALSE, options = list(pageLength = 10))
+})
+```
+
+### Avg Rate
+
+```{r}
+ggplot(livercancer_race, aes(x = Race.Ethnicity, y = Value, fill = Race.Ethnicity)) +
+  geom_bar(stat = "summary", fun = "mean", position = "dodge") +
+  labs(title = "Average Rate of Liver Cancer by Race/Ethnicity", x = "Race", y = "Average Value") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank())  # Hide x-axis labels
+```
+
+### Correlations By Race
+```{r liver race correlations}
+renderPlot({
+  if (input$race_liver == "All") {
+    subset_correlations_race_liver <- livercancer_race
+  } else {
+    # Subset data for the specific race/ethnicity
+    subset_correlations_race_liver <- livercancer_race[livercancer_race$Race.Ethnicity == input$race_liver, ]
+  }
+  subset_correlations_race_liver <- subset_correlations_race_liver %>% rename("Liver_Cancer" = "Value")
+  
+  liver_race_factors <- subset_correlations_race_liver %>%
+  left_join(bingedrinking_values, by = c("County", "fips", "State")) %>%
+  left_join(healthinsurance_values, by = c("County", "fips", "State"))%>%
+  left_join(diabetes_values, by = c("County", "fips", "State"))%>%
+  left_join(heartdisease_values, by = c("County", "fips", "State"))%>% 
+  left_join(obesity_values, by = c("County", "fips", "State"))%>% 
+  left_join(airquality_values, by = c("County", "fips", "State"))%>% #uses left_join due to missing data
+  left_join(asthma_values, by = c("County", "fips", "State"))%>% 
+  left_join(poverty_values, by = c("County", "fips", "State"))%>% 
+  left_join(smoking_values, by = c("County", "fips", "State"))%>%
+  left_join(arsenic_values, by = c("County", "fips", "State")) 
+  
+  trimmed_correlations_race_liver <- subset(liver_race_factors, select = -c(State, County, fips, StateFIPS, Data.Comment, Start.Year, End.Year))
+  
+  corr_var(trimmed_correlations_race_liver, Liver_Cancer, max_pvalue = 0.01, top = 10)
+})
+
+```
+
+
+
+
+
+
+
+
+
+
+
+Liver Cancer: Gender
+===
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### Filter by Gender {data-height=200}
+   
+```{r}
+selectInput("gender_liver", label = "Choose custom gender:",
+            choices = c("All", "Female", "Male"), selected = "All")
+```
+
+
+### US Map {data-height=500}
+   
+```{r}
+renderPlot({
+  if (input$gender_liver == "All") {
+    subset_map_gender_liver <- livercancer_gender
+  } else {
+    # Subset data for the specific race/ethnicity
+    subset_map_gender_liver <- livercancer_gender[livercancer_gender$Gender == input$gender_liver, ]
+  }
+  plot_usmap(regions = "county", data=subset_map_gender_liver, values = "Value") + scale_fill_continuous(type = "viridis")
+})
+```
+
+Column {data-width=500} {.tabset}
+-----------------------------------------------------------------------
+
+### Data By County
+
+```{r}
+renderDT({
+  if (input$gender_liver == "All") {
+    subset_table_gender_liver <- livercancer_gender
+  } else {
+    # Subset data for the specific race/ethnicity
+    subset_table_gender_liver <- livercancer_gender[livercancer_gender$Gender == input$gender_liver, ]
+  }
+  DT::datatable(subset_table_gender_liver[, c("State", "County", "Value", "Gender")], 
+                  rownames = FALSE, options = list(pageLength = 10))
+})
+```
+
+### Avg Rate
+
+```{r}
+ggplot(livercancer_gender, aes(x = Gender, y = Value, fill = Gender)) +
+  geom_bar(stat = "summary", fun = "mean", position = "dodge", width = 0.5, height = 0.5) +
+  labs(title = "Average Rate of Liver Cancer by Gender", x = "Gender", y = "Average Value") +
+  theme_minimal()
+```
+
+
+### Correlations By Gender
+```{r liver gender correlations}
+renderPlot({
+  if (input$gender_liver == "All") {
+    subset_correlations_gender_liver <- livercancer_gender
+  } else {
+    # Subset data for the specific race/ethnicity
+    subset_correlations_gender_liver <- livercancer_gender[livercancer_gender$Gender == input$gender_liver, ]
+  }
+  subset_correlations_gender_liver <- subset_correlations_gender_liver %>% rename("Liver_Cancer" = "Value")
+  
+  liver_gender_factors <- subset_correlations_gender_liver %>%
+  left_join(bingedrinking_values, by = c("County", "fips", "State")) %>%
+  left_join(healthinsurance_values, by = c("County", "fips", "State"))%>%
+  left_join(diabetes_values, by = c("County", "fips", "State"))%>%
+  left_join(heartdisease_values, by = c("County", "fips", "State"))%>% 
+  left_join(obesity_values, by = c("County", "fips", "State"))%>% 
+  left_join(airquality_values, by = c("County", "fips", "State"))%>% #uses left_join due to missing data
+  left_join(asthma_values, by = c("County", "fips", "State"))%>% 
+  left_join(poverty_values, by = c("County", "fips", "State"))%>% 
+  left_join(smoking_values, by = c("County", "fips", "State"))%>%
+  left_join(arsenic_values, by = c("County", "fips", "State")) 
+  
+  trimmed_correlations_gender_liver <- subset(liver_gender_factors, select = -c(State, County, fips, StateFIPS, Data.Comment, Start.Year, End.Year))
+  
+  corr_var(trimmed_correlations_gender_liver, Liver_Cancer, max_pvalue = 0.01, top = 10)
+})
+
+```
+
+
+
+
+
+
+
+Lung Cancer {data-icon=""}
+===
+
+Column {data-width=600 .tabset .tabset-fade}
+-------------------------------------
+
+### US Map {data-height=600}
+```{r}
+plot_usmap(regions = "county", data=lungcp, values = "Value") + scale_fill_continuous(type = "viridis")
+```
+
+### Filter by State
+
+#### Filter 
+```{r}
+options <- unique(lungcp$State)
+selectInput("state", label = "Choose custom state:",
+            choices = options, selected = "Alabama")
+```
+
+#### Map
+```{r}
+#plot_usmap(regions = "county", data=lungcp, values = "Value")
+renderPlot({
+  plot_usmap(regions = "county", 
+             data=lungcp, values = "Value", 
+             include = input$state, 
+             labels = TRUE) + scale_fill_continuous(low = "white", high = "red", name = "Rate of Cancer", label = scales::comma) + labs(title = input$state, subtitle = "This is a rate of lung cancer of the counties") + theme(panel.background=element_blank())
+},
+height = 500, 
+width = 600,
+)
+```
+
+### Filter by County
+```{r}
+#Source: Lung_Cancer", "Air_Quality", "Arsenic", "Binge_Drinking", "Heart_Disease", "Asthma", "Health_Insurance", "Diabetes", "Obesity", "Poverty", "Smoking"
+# Get USA polygon data
+USA <- getData("GADM", country = "usa", level = 2)
+# Prepare data
+mydata <- all_factors_lung %>% dplyr::select(State, County, Lung_Cancer, 
+                                      Air_Quality, Arsenic, Binge_Drinking, Heart_Disease, Asthma, 
+                                      Health_Insurance, Diabetes, Obesity, Poverty, Smoking)
+
+temp <- merge(USA, mydata,
+              by.x = c("NAME_1", "NAME_2"), by.y = c("State", "County"),
+              all.x = TRUE)
+# Create a color palette
+mypal <- colorNumeric(palette = "viridis", domain = temp$Lung_Cancer, na.color = "grey")
+
+leaflet() %>% 
+addProviderTiles("OpenStreetMap.Mapnik") %>%
+setView(lat = 39.8283, lng = -98.5795, zoom = 4) %>%
+  addPolygons(data = temp, stroke = FALSE, smoothFactor = 0.2, 
+              fillOpacity = 0.7,
+              fillColor = ~mypal(Lung_Cancer),
+              color = "white",
+              popup = paste("State: ", temp$NAME_1, "<br>",
+                            "County: ", temp$NAME_2, "<br>",
+                            "Rate of Lung Cancer: ", temp$Lung_Cancer, "<br>",
+                            "Air_Quality: ", temp$Air_Quality, "<br>",
+                            "Arsenic: ", temp$Arsenic, "<br>",
+                            "Binge_Drinking: ", temp$Binge_Drinking, "<br>",
+                            "Heart_Disease: ", temp$Heart_Disease, "<br>",
+                            "Asthma: ", temp$Asthma, "<br>",
+                            "Health_Insurance: ", temp$Health_Insurance, "<br>",
+                            "Diabetes: ", temp$Diabetes, "<br>",
+                            "Obesity: ", temp$Obesity, "<br>",
+                            "Poverty: ", temp$Poverty, "<br>",
+                            "Smoking: ", temp$Smoking, "<br>"),
+              highlight = highlightOptions(color = "black", bringToFront = TRUE)) %>%
+  addLegend(position = "bottomleft", pal = mypal, values = temp$Lung_Cancer,
+            title = "Rate of Cancer",
+            opacity = 0.7)
+
+```
+
+Column {data-width=400 .tabset .tabset-fade}
+-------------------------------------
+   
+### Table
+
+#### Table 
+```{r}
+DT::datatable(lungcp[, c("State", "County", "Value")],
+              rownames = FALSE, options = list(pageLength = 10))
+```
+
+#### Major Correlations
+
+```{r}
+
+trimmed_all_factors_lung <- subset(all_factors_lung, select = -c(State, County, fips, StateFIPS))
+corr_var(trimmed_all_factors_lung, Lung_Cancer, max_pvalue = 0.01, top = 10)
+```
+
+### Analysis
+   
+#### Top 5th States which have the highest rate of lung cancer
+```{r}
+top_states <- lungcp %>%
+  group_by(State) %>%
+  summarise(Avg_Value = mean(Value, na.rm = TRUE)) %>%
+  arrange(desc(Avg_Value)) %>%
+  head(5)
+
+# Print the top states
+print(top_states)
+```
+#### Top 5th Counties which have the highest rate of lung cancer
+```{r}
+top_counties <- lungcp %>%
+  group_by(State, County) %>%
+  summarise(Avg_Value = mean(Value, na.rm = TRUE)) %>%
+  arrange(desc(Avg_Value)) %>%
+  head(5)
+
+# Print the top counties
+print(top_counties)
+```
+
+
+### Correlation by Category
+```{r}
+lung_cl <- all_factors_lung[, c("Lung_Cancer", "Air_Quality", "Arsenic", "Binge_Drinking", "Heart_Disease", "Asthma", "Health_Insurance", "Diabetes", "Obesity", "Poverty", "Smoking")]
+
+lung_cl <- apply(lung_cl, 2, function(x) ifelse(is.na(x), mean(x, na.rm = TRUE), x))
+
+# Compute the correlation matrix
+corr_lung <- cor(lung_cl)
+
+corr_deposite_lung <- data.frame(variable = rownames(corr_lung), corr = corr_lung[, 'Lung_Cancer']) %>%
+  filter(variable != 'Lung_Cancer') %>%
+  arrange(desc(corr))
+
+corr_deposite_lung$corr <- abs(corr_deposite_lung$corr)
+
+lung_lifestyle <- mean(corr_deposite_lung$corr[corr_deposite_lung$variable == "Asthma" | corr_deposite_lung$variable == "Binge_Drinking" | 
+                                                   corr_deposite_lung$variable == "Diabetes" | corr_deposite_lung$variable == "Heart_Disease" |
+                                                   corr_deposite_lung$variable == "Obesity" | corr_deposite_lung$variable == "Smoking"])
+
+lung_socioeconomic <- mean(corr_deposite_lung$corr[corr_deposite_lung$variable == "Health_Insurance" | corr_deposite_lung$variable == "Poverty"])
+
+lung_environmental <- mean(corr_deposite_lung$corr[corr_deposite_lung$variable == "Air_Quality" | corr_deposite_lung$variable == "Arsenic"])
+
+lung_categories <- data.frame(Category = c("Lifestyle", "Socioeconomic", "Environmental"),
+                               Avg_Correlation = c(lung_lifestyle, lung_socioeconomic, lung_environmental))
+
+ggplot(lung_categories, aes(x = Category, y = Avg_Correlation, fill = Category)) +
+  geom_bar(stat = "summary", fun = "mean", position = "dodge") +
+  labs(title = "Which Factor Category has Highest Correlation with Lung Cancer?", x = "Factor Category", y = "Average Correlation") +
+  theme_minimal()
+```
+
+
+
+Lung Cancer: Race {data-icon="people-outline"}
+===================================== 
+
+
+Column {data-width=500}
+-------------------------------------
+
+### Filter by Race {data-height=250}
+   
+```{r}
+options <- unique(lung_racecp$Race.Ethnicity)
+selectInput("race", label = "Choose custom race:",
+            choices = c("All", "Asian/Pacific Islander (includes Hispanic)", "Black (includes Hispanic)", "American Indian/Alaskan Native (includes Hispanic)", "White (includes Hispanic)"), selected = "All")
+```
+
+### US Map {data-height=500}
+   
+```{r}
+renderPlot({
+  if (input$race == "All") {
+    subset_map_race <- lung_racecp
+  } else {
+    # Subset data for the specific race/ethnicity
+    subset_map_race <- lung_racecp[lung_racecp$Race.Ethnicity == input$race, ]
+  }
+  plot_usmap(regions = "county", data=subset_map_race, values = "Value") + scale_fill_continuous(type = "viridis")
+})
+```
+
+Column {data-width=500 .tabset .tabset-fade}
+-------------------------------------
+   
+### Table
+
+```{r}
+#DT::datatable(lung_racecp[, c("State", "County", "Value", "Race.Ethnicity")],
+#              rownames = FALSE, options = list(pageLength = 10))
+renderDT({
+  if (input$race == "All") {
+    subset_table_race <- lung_racecp
+  } else {
+    # Subset data for the specific race/ethnicity
+    subset_table_race <- lung_racecp[lung_racecp$Race.Ethnicity == input$race, ]
+  }
+  DT::datatable(subset_table_race[, c("State", "County", "Value", "Race.Ethnicity")], 
+                  rownames = FALSE, options = list(pageLength = 10))
+})
+```
+### Avg Rate
+
+```{r}
+# Round only the non-infinite values in the "Value" column
+lung_racecp$Value[is.finite(lung_racecp$Value)] <- round(lung_racecp$Value[is.finite(lung_racecp$Value)], 2)
+
+ggplot(lung_racecp, aes(x = Race.Ethnicity, y = Value, fill = Race.Ethnicity)) +
+  geom_bar(stat = "summary", fun = "mean", position = "dodge") +
+  labs(title = "Average Rate of Lung Cancer by Race/Ethnicity", x = "Race", y = "Average Value") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank())  # Hide x-axis labels
+```
+
+### Correlations By Race
+```{r lung race correlations}
+renderPlot({
+  if (input$race == "All") {
+    subset_correlations_race <- lung_racecp
+  } else {
+    # Subset data for the specific race/ethnicity
+    subset_correlations_race <- lung_racecp[lung_racecp$Race.Ethnicity == input$race, ]
+  }
+  subset_correlations_race <- subset_correlations_race %>% rename("Lung_Cancer" = "Value")
+  
+  lung_race_factors <- subset_correlations_race %>%
+  left_join(bingedrinking_values, by = c("County", "fips", "State")) %>%
+  left_join(healthinsurance_values, by = c("County", "fips", "State"))%>%
+  left_join(diabetes_values, by = c("County", "fips", "State"))%>%
+  left_join(heartdisease_values, by = c("County", "fips", "State"))%>% 
+  left_join(obesity_values, by = c("County", "fips", "State"))%>% 
+  left_join(airquality_values, by = c("County", "fips", "State"))%>% #uses left_join due to missing data
+  left_join(asthma_values, by = c("County", "fips", "State"))%>% 
+  left_join(poverty_values, by = c("County", "fips", "State"))%>% 
+  left_join(smoking_values, by = c("County", "fips", "State"))%>%
+  left_join(arsenic_values, by = c("County", "fips", "State")) 
+  
+  trimmed_correlations_race <- subset(lung_race_factors, select = -c(State, County, fips, StateFIPS))
+  
+  corr_var(trimmed_correlations_race, Lung_Cancer, max_pvalue = 0.01, top = 10)
+})
+
+```
+
+### Facts
+
+#### State and county with the maximum rate of lung cancer by race
+```{r}
+max_value_rows_race <- lung_racecp %>%
+  filter(!is.na(Race.Ethnicity)) %>%
+  group_by(Race.Ethnicity) %>%
+  filter(Value == max(Value, na.rm = TRUE))
+
+for (i in seq_len(nrow(max_value_rows_race))) {
+  cat("Race.Ethnicity:", max_value_rows_race$Race.Ethnicity[i], "\n",
+      "State with the maximum value:", max_value_rows_race$State[i], "\n",
+      "County with the maximum value:", max_value_rows_race$County[i], "\n",
+      "Value:", max_value_rows_race$Value[i], "\n\n"
+  )
+}
+```
+
+
+
+Lung Cancer: Gender {data-icon="transgender-outline"}
+===================================== 
+
+Column {data-width=500}
+-------------------------------------
+
+### Filter by Gender {data-height=250}
+   
+```{r}
+options <- unique(lung_gendercp$Gender)
+selectInput("gender", label = "Choose custom gender:",
+            choices = c("All", "Female", "Male"), selected = "All")
+```
+
+
+### US Map {data-height=500}
+   
+```{r}
+renderPlot({
+  if (input$gender == "All") {
+    subset_map_gender <- lung_gendercp
+  } else {
+    # Subset data for the specific race/ethnicity
+    subset_map_gender <- lung_gendercp[lung_gendercp$Gender == input$gender, ]
+  }
+  plot_usmap(regions = "county", data=subset_map_gender, values = "Value") + scale_fill_continuous(type = "viridis")
+})
+```
+
+
+Column {data-width=500 .tabset .tabset-fade}
+-------------------------------------
+   
+### Table
+
+```{r}
+renderDT({
+  if (input$gender == "All") {
+    subset_table_gender <- lung_gendercp
+  } else {
+    # Subset data for the specific race/ethnicity
+    subset_table_gender <- lung_gendercp[lung_gendercp$Gender == input$gender, ]
+  }
+  DT::datatable(subset_table_gender[, c("State", "County", "Value", "Gender")], 
+                  rownames = FALSE, options = list(pageLength = 10))
+})
+```
+
+### Avg Rate
+
+```{r}
+ggplot(lung_gendercp, aes(x = Gender, y = Value, fill = Gender)) +
+  geom_bar(stat = "summary", fun = "mean", position = "dodge", width = 0.5, height = 0.5) +
+  labs(title = "Average Rate of Lung Cancer by Gender", x = "Gender", y = "Average Value") +
+  theme_minimal()
+```
+
+
+### Correlations By Gender
+```{r lung gender correlations}
+renderPlot({
+  if (input$gender == "All") {
+    subset_correlations_gender <- lung_gendercp
+  } else {
+    # Subset data for the specific race/ethnicity
+    subset_correlations_gender <- lung_gendercp[lung_gendercp$Gender == input$gender, ]
+  }
+  subset_correlations_gender <- subset_correlations_gender %>% rename("Lung_Cancer" = "Value")
+  
+  lung_gender_factors <- subset_correlations_gender %>%
+  left_join(bingedrinking_values, by = c("County", "fips", "State")) %>%
+  left_join(healthinsurance_values, by = c("County", "fips", "State"))%>%
+  left_join(diabetes_values, by = c("County", "fips", "State"))%>%
+  left_join(heartdisease_values, by = c("County", "fips", "State"))%>% 
+  left_join(obesity_values, by = c("County", "fips", "State"))%>% 
+  left_join(airquality_values, by = c("County", "fips", "State"))%>% #uses left_join due to missing data
+  left_join(asthma_values, by = c("County", "fips", "State"))%>% 
+  left_join(poverty_values, by = c("County", "fips", "State"))%>% 
+  left_join(smoking_values, by = c("County", "fips", "State"))%>%
+  left_join(arsenic_values, by = c("County", "fips", "State")) 
+  
+  trimmed_correlations_gender <- subset(lung_gender_factors, select = -c(State, County, fips, StateFIPS))
+  
+  corr_var(trimmed_correlations_gender, Lung_Cancer, max_pvalue = 0.01, top = 10)
+})
+
+```
+
+
+### Facts
+
+#### State and county with the maximum rate of lung cancer by gender
+```{r}
+max_value_rows <- lung_gendercp %>%
+  group_by(Gender) %>%
+  filter(Value == max(Value))
+
+for (i in seq_len(nrow(max_value_rows))) {
+  cat("Gender:", max_value_rows$Gender[i], "\n",
+      "State with the maximum value:", max_value_rows$State[i], "\n",
+      "County with the maximum value:", max_value_rows$County[i], "\n",
+      "Value:", max_value_rows$Value[i], "\n\n"
+  )
+}
+```
+
+#### County where the sum of female values is greater than the sum of male values 
+```{r}
+county_female_greater_than_male <- lung_gendercp %>%
+  group_by(State, County) %>%
+  summarize(Female = Value[Gender == "Female"],
+            Male = Value[Gender == "Male"],
+            .groups = "drop") %>%
+  filter(Female > Male) %>%
+  select(State, County, Female, Male)
+
+print(county_female_greater_than_male)
+```
+
+
+
+
+
+
+
+
+Factors {data-icon=""}
+===================================== 
+
+Column {data-width=500}
+-------------------------------------
+
+### Filter {data-height=250}
+   
+```{r}
+selectInput("factor", label = "Choose custom factor:",
+            choices = c("Air_Quality", "Arsenic", "Binge_Drinking", "Heart_Disease", "Asthma", "Health_Insurance", "Diabetes", "Obesity", "Poverty", "Smoking"), selected = "Air_Quality")
+```
+
+FACTOR EXPLANATIONS
+
+Air_Quality: Annual average air quality score for the county\n 
+
+Arsenic: Arsenic levels (averaged out for the county)\n
+
+Asthma: # of people with reported asthma per 100k\n  
+
+Binge_Drinking: # of binge drinking adults per 100k\n  
+
+Diabetes: # of adults with diabetes per 100k\n  
+
+Health_Insurance: % of population without health insurance in the county\n 
+
+Heart_Disease: # of people with reported coronary heart disease per 100k\n 
+
+Obesity: # of adults reported obese per 100k\n  
+
+Poverty: % of people below poverty line in the county\n  
+
+Smoking: # of smoking adults per 100k\n  
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Lifestyle Factors-- Asthma, Binge_Drinking, Diabetes, Heart_Disease, Obesity, Smoking\n  
+
+Socioeconomic Factors-- Health_Insurance, Poverty\n  
+
+Environmental Factors-- Air_Quality, Arsenic
+
+### Factor {data-height=500}
+   
+```{r}
+renderPlot({
+  plot_usmap(regions = "county", data=all_factors_lung, values = input$factor) + scale_fill_continuous(type = "viridis")
+})
+```
+
+Column {data-width=500 .tabset .tabset-fade}
+-------------------------------------
+
+### Table   
+
+```{r}
+renderDT({
+  DT::datatable(all_factors_lung[, c("State", "County", input$factor)],
+    rownames = FALSE, options = list(pageLength = 10)
+  )
+})
+```
+
+### Figures
+
+
+##### Mean
+```{r}
+renderText({
+  target_factor <- input$factor
+  average_value <- mean(all_factors_lung[[target_factor]], na.rm = TRUE)
+
+  # Print the information
+  paste("Average of ", target_factor, ":", average_value)
+})
+```
+
+##### Max
+```{r}
+renderText({
+  target_factor <- input$factor
+  max_value <- max(all_factors_lung[[target_factor]], na.rm = TRUE)
+  
+  # Print the information
+  paste("Max of ", target_factor, ":", max_value)
+})
+```
+
+##### Missing Values
+```{r}
+renderText({
+  target_factor <- input$factor
+  missing_values <- sum(is.na(all_factors_lung[[target_factor]]))
+  total_rows <- nrow(all_factors_lung)
+  
+  # Print the information
+  paste("Missing Values (marked as NA) of ", target_factor, ":", missing_values, "/", total_rows, "in total")
+})
+```
+
+##### Top 5th States & Counties which have the highest influence by:
+```{r}
+renderDataTable({
+  target_factor <- input$factor
+  # Find the top 5 rows with the highest values in the target_factor column
+  top_5_rows <- head(all_factors_lung[order(-all_factors_lung[[target_factor]]), ], 5)
+  datatable(top_5_rows[, c("State", "County", input$factor)], 
+            options = list(pageLength = 5))
+})
+```
+
+### Correlations 
+    
+#### Heat Map
+```{r}
+cl <- all_factors_lung[, c("Lung_Cancer", "Air_Quality", "Arsenic", "Binge_Drinking", "Heart_Disease", "Asthma", "Health_Insurance", "Diabetes", "Obesity", "Poverty", "Smoking")]
+
+cl <- apply(cl, 2, function(x) ifelse(is.na(x), mean(x, na.rm = TRUE), x))
+
+# Compute the correlation matrix
+corr <- cor(cl)
+
+# Create a heatmap of the correlation matrix without hierarchical clustering
+heatmap.2(corr, 
+          dendrogram = 'none', 
+          col = colorRampPalette(c("skyblue", "white", "pink"))(50), 
+          scale = 'none',
+          keysize = 1.5,
+          trace = 'none',
+          main = 'Heatmap of Correlation Matrix',
+          Rowv = FALSE,
+          Colv = FALSE,
+          cexRow = 0.5,
+          cexCol = 0.5)
+```
+
+
+#### All Correlations Shown
+
+```{r ggpairs}
+pairs <- ggpairs(trimmed_all_factors, upper = list(continuous = wrap("cor", size = 2)) , lower = list(continuous = wrap("smooth", alpha = 0.3, size=0.1)))
+pairs + theme(strip.text.x = element_text(size = 4), strip.text.y = element_text(size = 4))
+```
+
+#### Top Correlations Between Factors
+
+```{r}
+corr_cross(trimmed_all_factors, max_pvalue = 0.01, top = 10)
+```
+
+#### Extract the correlation of each variable with lung cancer rate
+```{r}
+corr_deposite <- data.frame(variable = rownames(corr), corr = corr[, 'Lung_Cancer']) %>%
+  filter(variable != 'Lung_Cancer') %>%
+  arrange(desc(corr))
+corr_deposite
+#DT::datatable(corr_deposite[, c("variable", "corr")],  rownames = FALSE, options = list(pageLength = 10))
+```
+
+### Summary
+
+#### Summary
+```{r}
+summary(all_factors_lung)
+```
+
+
+#### Insight
+Diabetes has the most significant correlations to other factors. This makes sense, as Diabetes can be caused by lifestyle and environmental factors. We see that Diabetes is positively correlated with Heart Disease, Poverty, Obesity, and Smoking. Diabetes is also negatively correlated with Binge Drinking according to the data.
+
+We can see that Diabetes is correlated to Smoking and Poverty, but Smoking is also correlated to Poverty. This is evidence of more complex interactions occurring between the variables, beyond single interactions. This shows how the data set is highly complex, and will be difficult to accurately predict.
+
+The data shows correlations that are well known in real life, like the positive correlation between Asthma and Smoking due to smoking producing major symptoms in people with asthma. We also see Diabetes and Heart Disease highly correlated due to high blood sugar levels creating plaque in blood vessels, increasing the risk of cardiovascular disease.
+
+Binge Drinking seems to have negative correlations with most factors, as well as with Liver Cancer rate.
